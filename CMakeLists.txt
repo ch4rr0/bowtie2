@@ -8,7 +8,11 @@ project(bowtie2 LANGUAGES CXX VERSION "2.3.3.1")
 enable_testing()
 
 include(CTest)
+include(ProcessorCount)
 include(CheckSymbolExists)
+include("cmake/TBBGet.cmake")
+
+ProcessorCount(NUM_CORES)
 
 option(BOWTIE_MM "enable bowtie2 memory mapping" ON)
 option(BOWITE_SHARED_MM "enable shared memory mapping" ON)
@@ -102,13 +106,20 @@ if (MINGW)
 endif(MINGW)
 
 find_package(Threads)
+find_path(TBB_INCLUDE_PATH tbb)
 find_library(ZLIB_LIBRARY_PATH z)
 find_library(TBB_LIBRARY_PATH tbb)
 find_library(TBB_MALLOC_LIBRARY_PATH tbbmalloc)
-link_libraries(${ZLIB_LIBRARY_PATH} ${CMAKE_THREAD_LIBS_INIT} ${TBB_LIBRARY_PATH} ${TBB_MALLOC_LIBRARY_PATH})
 
-find_path(TBB_INCLUDE_PATH tbb)
+if (NOT TBB_LIBRARY_PATH)
+    tbb_get(SAVE_TO "${PROJECT_SOURCE_DIR}/.bowtie2-deps" TBB_ROOT tbb_root) 
+    find_library(TBB_LIBRARY_PATH tbb PATHS "${tbb_root}/lib")
+    find_library(TBB_MALLOC_LIBRARY_PATH tbbmalloc_proxy PATHS "${tbb_root}/lib")
+    find_path(TBB_INCLUDE_PATH tbb PATHS "${tbb_root}/include")
+endif()
+
 include_directories(${PROJECT_SOURCE_DIR} ${TBB_INCLUDE_PATH})
+link_libraries(${ZLIB_LIBRARY_PATH} ${CMAKE_THREAD_LIBS_INIT} ${TBB_LIBRARY_PATH} ${TBB_MALLOC_LIBRARY_PATH})
 
 add_executable(bowtie2-align-s ${SEARCH_CPPS} ${SHARED_CPPS})
 add_executable(bowtie2-align-l ${SEARCH_CPPS} ${SHARED_CPPS})
@@ -121,4 +132,18 @@ set_target_properties(bowtie2-align-l bowtie2-build-l bowtie2-inspect-l PROPERTI
 set_target_properties(bowtie2-inspect-s bowtie2-inspect-l PROPERTIES COMPILE_FLAGS "-DBOWTIE_INSPECT_MAIN")
 set_target_properties(${BOWTIE2_BIN_LIST} PROPERTIES DEBUG_POSTFIX "-debug")
 
+function(_get_perl_deps)
+    file(DOWNLOAD "http://cpanmin.us" "${PROJECT_SOURCE_DIR}/.bowtie2-deps/cpanmin.pl")
+    execute_process(COMMAND sh "-c"  "cat ${PROJECT_SOURCE_DIR}/.bowtie2-deps/cpanmin.pl | perl - -l ${PROJECT_SOURCE_DIR}/.bowtie2-deps App::cpanminus local::lib")
+    execute_process(COMMAND perl -I ${PROJECT_SOURCE_DIR}/.bowtie2-deps/lib/perl5 -Mlocal::lib=${PROJECT_SOURCE_DIR}/.bowtie2-deps)
+    execute_process(COMMAND cpanm --force Math::Random Clone Test::Deep Sys::Info)
+endfunction(_get_perl_deps)
+
 add_test(NAME simple-align COMMAND ${PROJECT_SOURCE_DIR}/bowtie2 -x example/index/lambda_virus example/reads/longreads.fq)
+# _get_perl_deps()
+# add_test(NAME simple-tests COMMAND
+#     sh -c "eval `perl -I ${PROJECT_SOURCE_DIR}/.bowtie2-deps/lib/perl5 -Mlocal::lib=${PROJECT_SOURCE_DIR}/.bowtie2-deps`;
+#     sh ${PROJECT_SOURCE_DIR}/scripts/test/simple_tests.sh")
+# add_test(NAME random-tests COMMAND
+#     "perl -I ${PROJECT_SOURCE_DIR}/.bowtie2-deps/lib/perl5 -Mlocal::lib=${PROJECT_SOURCE_DIR}/.bowtie2-deps; \
+#     ${PROJECT_SOURCE_DIR}/scripts/sim/run.sh ${NUM_CORES}")
