@@ -2,6 +2,7 @@ pipeline {
   agent {
     docker {
       image 'ubuntu:latest'
+      args '--privileged --pid=host'
     }
 
   }
