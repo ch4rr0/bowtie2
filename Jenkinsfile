@@ -15,5 +15,10 @@ git pull
 make allall -j4'''
       }
     }
+    stage('Test') {
+      steps {
+        sh 'make simple-test'
+      }
+    }
   }
 }
